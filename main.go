@@ -1,28 +1,22 @@
 package main
 
 import (
-	"log"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
 )
 
 const (
-	iss = "humdip.com"
+	issuer = "humdip.com"
+
+	tokenTypeUserAuth = "au"
+	tokenTypeAPIAuth  = "aa"
 
 	userTokenExpiry              = time.Minute * 10
 	emailConfirmationTokenExpiry = time.Hour
 )
 
-func main() {
-	mySigningKey := []byte("testKey")
-	token, err := emailConfirmationToken(mySigningKey, "test@test.com", "salty")
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf(token)
-}
-
+// EmailConfirmationTokenClaims are the custom claims used in the email confirmation token
 type EmailConfirmationTokenClaims struct {
 	Email string `json:"email"`
 	Salt  string `json:"salt"`
@@ -30,45 +24,52 @@ type EmailConfirmationTokenClaims struct {
 }
 
 func emailConfirmationToken(signingKey []byte, email string, salt string) (string, error) {
-	claims := EmailConfirmationTokenClaims{
-		email,
-		salt,
-		jwt.StandardClaims{
-			ExpiresAt: time.Now().Add(emailConfirmationTokenExpiry).Unix(),
-			Issuer:    iss,
+	return signToken(
+		EmailConfirmationTokenClaims{
+			email,
+			salt,
+			jwt.StandardClaims{
+				ExpiresAt: time.Now().Add(emailConfirmationTokenExpiry).Unix(),
+				Issuer:    issuer,
+			},
 		},
-	}
-
-	return sign(claims, signingKey)
+		signingKey,
+	)
 }
 
-type APITokenClaims struct {
+// AuthTokenClaims are the custom claims used in auth tokens to discern the auth token type
+type AuthTokenClaims struct {
+	Type string `json:"type"`
 	jwt.StandardClaims
 }
 
 func apiToken(signingKey []byte, userID string) (string, error) {
-	claims := APITokenClaims{
-		jwt.StandardClaims{
-			Issuer:  iss,
-			Subject: userID,
+	return signToken(
+		AuthTokenClaims{
+			tokenTypeAPIAuth,
+			jwt.StandardClaims{
+				Issuer:  issuer,
+				Subject: userID,
+			},
 		},
-	}
-
-	return sign(claims, signingKey)
+		signingKey,
+	)
 }
 
 func userToken(signingKey []byte, userID string) (string, error) {
-	claims := APITokenClaims{
-		jwt.StandardClaims{
-			ExpiresAt: time.Now().Add(userTokenExpiry).Unix(),
-			Issuer:    iss,
-			Subject:   userID,
+	return signToken(
+		AuthTokenClaims{
+			tokenTypeAPIAuth,
+			jwt.StandardClaims{
+				ExpiresAt: time.Now().Add(userTokenExpiry).Unix(),
+				Issuer:    issuer,
+				Subject:   userID,
+			},
 		},
-	}
-
-	return sign(claims, signingKey)
+		signingKey,
+	)
 }
 
-func sign(claims jwt.Claims, signingKey []byte) (string, error) {
+func signToken(claims jwt.Claims, signingKey []byte) (string, error) {
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(signingKey)
 }
