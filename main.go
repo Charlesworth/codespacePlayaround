@@ -9,6 +9,9 @@ import (
 
 const (
 	iss = "humdip.com"
+
+	userTokenExpiry              = time.Minute * 10
+	emailConfirmationTokenExpiry = time.Hour
 )
 
 func main() {
@@ -31,46 +34,41 @@ func emailConfirmationToken(signingKey []byte, email string, salt string) (strin
 		email,
 		salt,
 		jwt.StandardClaims{
-			ExpiresAt: time.Now().Add(time.Hour).Unix(),
+			ExpiresAt: time.Now().Add(emailConfirmationTokenExpiry).Unix(),
 			Issuer:    iss,
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(signingKey)
+	return sign(claims, signingKey)
 }
 
 type APITokenClaims struct {
-	UserID string `json:"user_id"`
 	jwt.StandardClaims
 }
 
 func apiToken(signingKey []byte, userID string) (string, error) {
 	claims := APITokenClaims{
-		userID,
 		jwt.StandardClaims{
-			Issuer: iss,
+			Issuer:  iss,
+			Subject: userID,
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(signingKey)
-}
-
-type UserTokenClaims struct {
-	UserID string `json:"user_id"`
-	jwt.StandardClaims
+	return sign(claims, signingKey)
 }
 
 func userToken(signingKey []byte, userID string) (string, error) {
 	claims := APITokenClaims{
-		userID,
 		jwt.StandardClaims{
-			ExpiresAt: time.Now().Add(time.Minute * 10).Unix(),
+			ExpiresAt: time.Now().Add(userTokenExpiry).Unix(),
 			Issuer:    iss,
+			Subject:   userID,
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(signingKey)
+	return sign(claims, signingKey)
+}
+
+func sign(claims jwt.Claims, signingKey []byte) (string, error) {
+	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(signingKey)
 }
