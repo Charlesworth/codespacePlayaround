@@ -10,8 +10,9 @@ import (
 const (
 	issuer = "humdip.com"
 
-	tokenTypeUserAuth = "au"
-	tokenTypeAPIAuth  = "aa"
+	tokenTypeEmailConfirmation = "ec1"
+	tokenTypeUserAuth          = "ua1"
+	tokenTypeAPIAuth           = "aa1"
 
 	userTokenExpiry              = time.Minute * 10
 	emailConfirmationTokenExpiry = time.Hour
@@ -19,6 +20,7 @@ const (
 
 // EmailConfirmationTokenClaims are the custom claims used in the email confirmation token
 type EmailConfirmationTokenClaims struct {
+	Type  string `json:"type"`
 	Email string `json:"email"`
 	Salt  string `json:"salt"`
 	jwt.StandardClaims
@@ -27,6 +29,7 @@ type EmailConfirmationTokenClaims struct {
 func emailConfirmationToken(signingKey []byte, email string, salt string) (string, error) {
 	return signToken(
 		EmailConfirmationTokenClaims{
+			tokenTypeEmailConfirmation,
 			email,
 			salt,
 			jwt.StandardClaims{
@@ -105,8 +108,27 @@ func validateAuthToken(tokenStr string, signingKey []byte) (userID string, err e
 		case tokenTypeUserAuth:
 			return claims.Subject, nil
 		default:
-			return "", fmt.Errorf("Invalid token: unrecognised type %v", claims.Type)
+			return "", fmt.Errorf("Invalid token: unsupported type %v", claims.Type)
 		}
 	}
 	return "", fmt.Errorf("Invalid token")
+}
+
+// We only want to give the user specific information if the token has expired
+func validateToken(token *jwt.Token, inputErr error) error {
+	if inputErr != nil {
+		// try and typecast the error to look for token expiry
+		if ve, ok := inputErr.(*jwt.ValidationError); ok {
+			if ve.Errors&(jwt.ValidationErrorExpired|jwt.ValidationErrorNotValidYet) != 0 {
+				// Token is either expired (exp claim) or not active yet (iat claim)
+				return fmt.Errorf("Invalid token: token has expired")
+			}
+		}
+		return fmt.Errorf("Invalid token")
+	}
+
+	if !token.Valid {
+		return fmt.Errorf("Invalid token")
+	}
+	return nil
 }
