@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -72,4 +73,40 @@ func userToken(signingKey []byte, userID string) (string, error) {
 
 func signToken(claims jwt.Claims, signingKey []byte) (string, error) {
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(signingKey)
+}
+
+func validateAuthToken(tokenStr string, signingKey []byte) (userID string, err error) {
+	claims := AuthTokenClaims{}
+	token, err := jwt.ParseWithClaims(tokenStr, &claims, func(token *jwt.Token) (interface{}, error) {
+		// All tokens are signed with HS256
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("Invalid Token: Unexpected signing method: %v", token.Header["alg"])
+		}
+		return signingKey, nil
+	})
+
+	if err != nil {
+		// invalid token, try and typecast the error
+		if ve, ok := err.(*jwt.ValidationError); ok {
+			if ve.Errors&jwt.ValidationErrorMalformed != 0 {
+				return "", fmt.Errorf("Invalid Token: token is malformed")
+			} else if ve.Errors&(jwt.ValidationErrorExpired|jwt.ValidationErrorNotValidYet) != 0 {
+				// Token is either expired (exp claim) or not active yet (iat claim)
+				return "", fmt.Errorf("Invalid token: token has expired")
+			}
+		}
+		return "", fmt.Errorf("Invalid token: parsing error")
+	}
+
+	if token.Valid {
+		switch claims.Type {
+		case tokenTypeAPIAuth:
+			return claims.Subject, nil
+		case tokenTypeUserAuth:
+			return claims.Subject, nil
+		default:
+			return "", fmt.Errorf("Invalid token: unrecognised type %v", claims.Type)
+		}
+	}
+	return "", fmt.Errorf("Invalid token")
 }
